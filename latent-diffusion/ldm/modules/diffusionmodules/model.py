@@ -403,14 +403,16 @@ class Encoder(nn.Module):
             attn = nn.ModuleList()
             block_in = ch*in_ch_mult[i_level]
             block_out = ch*ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
+            for i_block in range(self.num_res_blocks): #residual block의 수만큼 반복(사용자가 설정하기 나름이다)
                 block.append(ResnetBlock(in_channels=block_in,
                                          out_channels=block_out, #ResnetBlock에 ResnetBlock init()에 out_channels=None으로 정의되어 있어서 의미 없는 값인줄 알았으나,
                                          #이렇게 out_channels=block_out처럼 선언을 해주면 이 값으로 바뀌는 것을 알게 되었다.
                                          #따라서 이 ResnetBlock은 input의 channel과 output의 channel이 block_in, block_out으로 서로 다르다.
                                          temb_channels=self.temb_ch,
-                                         dropout=dropout))
-                block_in = block_out
+                                         dropout=dropout)) #인자들의 이름을 명시하면, 순서가 바뀌어도 상관 없다.
+                                        # +) ResnetBlock을 선언할 때, *이 들어가는데, 이거는 인자를 선언하는 개수를 바꿀 수 있다는 뜻이다.
+                                        #즉, out_channels에 대해 선언하지 않아도 된다는 것이다. 하지만 in_channel은 선언되어 있는 것이 없기 때문에 반드시 해주어야 한다.
+                block_in = block_out#첫번째 ResnetBlock을 통과한 이후에는 출력 channel이 계속 유지된다.
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
             down = nn.Module()
