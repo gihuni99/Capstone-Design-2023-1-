@@ -405,8 +405,9 @@ class Encoder(nn.Module):
             block_out = ch*ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
                 block.append(ResnetBlock(in_channels=block_in,
-                                         out_channels=block_out, #ResnetBlock에 이미 default값으로 들어가 있어서 의미 없는 값이다.
-                                         #ResnetBlock init()에 out_channels=None으로 정의되어 있다.
+                                         out_channels=block_out, #ResnetBlock에 ResnetBlock init()에 out_channels=None으로 정의되어 있어서 의미 없는 값인줄 알았으나,
+                                         #이렇게 out_channels=block_out처럼 선언을 해주면 이 값으로 바뀌는 것을 알게 되었다.
+                                         #따라서 이 ResnetBlock은 input의 channel과 output의 channel이 block_in, block_out으로 서로 다르다.
                                          temb_channels=self.temb_ch,
                                          dropout=dropout))
                 block_in = block_out
