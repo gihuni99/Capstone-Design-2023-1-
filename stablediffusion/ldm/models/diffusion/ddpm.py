@@ -46,37 +46,40 @@ def uniform_on_device(r1, r2, shape, device):
 class DDPM(pl.LightningModule):
     # classic DDPM with Gaussian diffusion, in image space
     def __init__(self,
-                 unet_config,
-                 timesteps=1000,
-                 beta_schedule="linear",
-                 loss_type="l2",
-                 ckpt_path=None,
-                 ignore_keys=[],
-                 load_only_unet=False,
-                 monitor="val/loss",
-                 use_ema=True,
-                 first_stage_key="image",
-                 image_size=256,
-                 channels=3,
-                 log_every_t=100,
-                 clip_denoised=True,
-                 linear_start=1e-4,
-                 linear_end=2e-2,
-                 cosine_s=8e-3,
-                 given_betas=None,
-                 original_elbo_weight=0.,
+                 unet_config, #U-Net구조의 설정을 담고 있는 딕셔너리
+                 timesteps=1000, #Diffusion 과정 전체 타임스텝 수
+                 beta_schedule="linear", #Diffusion과정에서 사용될 beta값의 스케줄(선형, 코사인 등)
+                 #beta값은 일종의 확산계수(diffusion coeffecient)
+                 #diffusion은 입자들이 농도 차이에 따라 자연스럽게 이동하는 현상
+                 #=> 여러가지 상황에 따라 diffusion결과가 달라지는데, 그것에 관여하는 parameter
+                 loss_type="l2",#Loss Function에 종류, 여기에서는 L2로 지정한 것 같다.(기본적으로)
+                 ckpt_path=None, #model checkpoint경로
+                 ignore_keys=[], #checkpoint에서 무시할 key list
+                 load_only_unet=False, #U-Net모델만 불러올 것인지 여부
+                 monitor="val/loss", #모니터링할 지표(여기에서는 validation과 loss를 의미하는 것 같다.)
+                 use_ema=True, #지수 이동 평균(ema) 사용 여부
+                 first_stage_key="image",#모델에 입력될 데이터의 첫번째 스테이지 키
+                 image_size=256, #input image의 크기
+                 channels=3,#input image의 channel수
+                 log_every_t=100,#몇 스텝마다 log를 남길지 결정
+                 clip_denoised=True,#denoise한 결과를 clipping할지 여부
+                 linear_start=1e-4,#beta schedule의 선형 시작 값
+                 linear_end=2e-2, #beta schedule의 선형 끝 값
+                 cosine_s=8e-3, #beta schedule의 cosine함수 파라미터
+                 given_betas=None, #사용자가 직접 입력한 beta값 리스트
+                 original_elbo_weight=0., #원래의 ELBO weight값
                  v_posterior=0.,  # weight for choosing posterior variance as sigma = (1-v) * beta_tilde + v * beta
-                 l_simple_weight=1.,
-                 conditioning_key=None,
-                 parameterization="eps",  # all assuming fixed variance schedules
-                 scheduler_config=None,
-                 use_positional_encodings=False,
-                 learn_logvar=False,
-                 logvar_init=0.,
-                 make_it_fit=False,
-                 ucg_training=None,
-                 reset_ema=False,
-                 reset_num_ema_updates=False,
+                 l_simple_weight=1.,#Loss function중 하나(normalization)
+                 conditioning_key=None, #conditional모델에서 사용할 input data의 key
+                 parameterization="eps",  # all assuming fixed variance schedules #beta값 예측을 위한 파라미터
+                 scheduler_config=None, #scheduler설정(weight decay나 LR조정)
+                 use_positional_encodings=False,#positional encoding사용 여부(input의 위치정보 추가)
+                 learn_logvar=False,#로그 분산 학습 여부
+                 logvar_init=0., #로그 분산 초기 값
+                 make_it_fit=False, #모델 크기를 조정할지 여부
+                 ucg_training=None, # UCG training설정
+                 reset_ema=False, #ema초기화 여부
+                 reset_num_ema_updates=False, #ema 업데이트 수를 초기화할지 여부
                  ):
         super().__init__()
         assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
@@ -89,7 +92,8 @@ class DDPM(pl.LightningModule):
         self.image_size = image_size  # try conv?
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
-        self.model = DiffusionWrapper(unet_config, conditioning_key)
+        self.model = DiffusionWrapper(unet_config, conditioning_key) #Diffusion모델에서 추가적인 설정
+        #
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -888,7 +892,7 @@ class LatentDiffusion(DDPM):
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
 
-        if self.parameterization == "x0":
+        if self.parameterization == "x0": #이거 beta변수 설정부분이었던 것 같다.
             target = x_start
         elif self.parameterization == "eps":
             target = noise
