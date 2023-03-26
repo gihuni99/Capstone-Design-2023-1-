@@ -492,11 +492,14 @@ class DDPM(pl.LightningModule):
         self.log_dict(loss_dict_no_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
         self.log_dict(loss_dict_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
 
-
+    #각 학습 배치가 끝나면 실행되는 함수/ 모델이 Exponential Moving Average (EMA)를 사용하도록 설정되어 있으면, 
+    #이 함수에서는 현재 학습 중인 모델의 가중치를 EMA 모델로 복사(EMA 모델은 Validation Loss 계산 시에 사용)
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:
             self.model_ema(self.model)
 
+    #이미지 리스트에서 그리드 형태의 이미지를 생성하는 함수
+    #그리드(Grid) 형태는 행과 열의 격자 형태로 구성된 자료 구조(흔히 이차원 배열 또는 매트릭스(Matrix)라고 함)
     def _get_rows_from_list(self, samples):
         n_imgs_per_row = len(samples)
         denoise_grid = rearrange(samples, 'n b c h w -> b n c h w')
@@ -504,6 +507,7 @@ class DDPM(pl.LightningModule):
         denoise_grid = make_grid(denoise_grid, nrow=n_imgs_per_row)
         return denoise_grid
 
+    #디버깅 및 모델의 학습 상황을 시각화하는 데 사용되는 함수
     @torch.no_grad()
     def log_images(self, batch, N=8, n_row=2, sample=True, return_keys=None, **kwargs):
         log = dict()
@@ -542,6 +546,7 @@ class DDPM(pl.LightningModule):
                 return {key: log[key] for key in return_keys}
         return log
 
+    #PyTorch Lightning의 configure_optimizers 메서드(학습에 사용될 optimizer를 설정)
     def configure_optimizers(self):
         lr = self.learning_rate
         params = list(self.model.parameters())
@@ -555,70 +560,75 @@ class LatentDiffusion(DDPM):
     """main class"""
 
     def __init__(self,
-                 first_stage_config,
-                 cond_stage_config,
-                 num_timesteps_cond=None,
-                 cond_stage_key="image",
-                 cond_stage_trainable=False,
-                 concat_mode=True,
-                 cond_stage_forward=None,
-                 conditioning_key=None,
-                 scale_factor=1.0,
-                 scale_by_std=False,
-                 force_null_conditioning=False,
-                 *args, **kwargs):
+                 first_stage_config, #첫 번째 stage인 Unet 모델의 설정을 담고 있는 객체
+                 cond_stage_config, #conditional stage의 설정을 담고 있는 객체
+                 num_timesteps_cond=None, #conditional stage을 몇 번 거칠지 정하는 변수
+                 cond_stage_key="image", #conditional stage에 입력되는 tensor의 key
+                 cond_stage_trainable=False, #conditional stage이 학습 가능한지를 나타내는 불리언 변수
+                 concat_mode=True, #conditional stage에서 입력된 tensor와 first stage에서 생성된 tensor를 
+                                   #concatenation하는지 여부를 결정하는 불리언 변수
+                 cond_stage_forward=None, #conditional stage의 forward 함수
+                 conditioning_key=None, #conditional stage의 input conditioning 방식
+                 scale_factor=1.0, #denoised 이미지에 곱해줄 스케일링 값
+                 scale_by_std=False, #conditioning을 무시할지 여부를 결정하는 불리언 변수
+                 force_null_conditioning=False, #conditioning을 무시할지 여부를 결정하는 불리언 변수
+                 *args, **kwargs): #추가적인 인자(수에 제한 x)
         self.force_null_conditioning = force_null_conditioning
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
         assert self.num_timesteps_cond <= kwargs['timesteps']
         # for backwards compatibility after implementation of DiffusionWrapper
-        if conditioning_key is None:
+        if conditioning_key is None: #기본값은 conditioning_key가 concat이다.
             conditioning_key = 'concat' if concat_mode else 'crossattn'
         if cond_stage_config == '__is_unconditional__' and not self.force_null_conditioning:
-            conditioning_key = None
-        ckpt_path = kwargs.pop("ckpt_path", None)
+            conditioning_key = None #만약 unconditional조건이 있으면 없다는 조건
+        ckpt_path = kwargs.pop("ckpt_path", None) #ckpt_path(checkpoint파일)이 있다면 model weight, ema weight불러온다.
         reset_ema = kwargs.pop("reset_ema", False)
         reset_num_ema_updates = kwargs.pop("reset_num_ema_updates", False)
-        ignore_keys = kwargs.pop("ignore_keys", [])
+        ignore_keys = kwargs.pop("ignore_keys", []) #ignore_keys: checkpoint에서 무시할 키워드 리스트
         super().__init__(conditioning_key=conditioning_key, *args, **kwargs)
         self.concat_mode = concat_mode
         self.cond_stage_trainable = cond_stage_trainable
         self.cond_stage_key = cond_stage_key
-        try:
+        try: #'num_downs': Unet 모델에서 downscaling layer의 개수
             self.num_downs = len(first_stage_config.params.ddconfig.ch_mult) - 1
         except:
             self.num_downs = 0
         if not scale_by_std:
-            self.scale_factor = scale_factor
+            self.scale_factor = scale_factor #'scale_factor': denoised 이미지에 곱해줄 스케일링 값
         else:
             self.register_buffer('scale_factor', torch.tensor(scale_factor))
-        self.instantiate_first_stage(first_stage_config)
-        self.instantiate_cond_stage(cond_stage_config)
+        self.instantiate_first_stage(first_stage_config)#self.instantiate_first_stage(): Unet 모델의 인스턴스 생성
+        self.instantiate_cond_stage(cond_stage_config)#self.instantiate_cond_stage(): conditional stage 모델의 인스턴스 생성
         self.cond_stage_forward = cond_stage_forward
-        self.clip_denoised = False
-        self.bbox_tokenizer = None
+        self.clip_denoised = False #self.clip_denoised: denoised 이미지를 자를지 여부를 결정하는 불리언 변수
+        self.bbox_tokenizer = None #self.bbox_tokenizer: bounding box tokenizer 객체
 
         self.restarted_from_ckpt = False
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys)
             self.restarted_from_ckpt = True
             if reset_ema:
-                assert self.use_ema
+                assert self.use_ema #self.use_ema: EMA 모델을 사용할지 여부를 결정하는 불리언 변수
                 print(
                     f"Resetting ema to pure model weights. This is useful when restoring from an ema-only checkpoint.")
-                self.model_ema = LitEma(self.model)
-        if reset_num_ema_updates:
+                self.model_ema = LitEma(self.model) #self.model_ema: EMA 모델 인스턴스
+        if reset_num_ema_updates: #self.restarted_from_ckpt: checkpoint에서 다시 시작한 경우를 결정하는 불리언 변수
             print(" +++++++++++ WARNING: RESETTING NUM_EMA UPDATES TO ZERO +++++++++++ ")
             assert self.use_ema
             self.model_ema.reset_num_updates()
 
+    #Conditional Sampling을 위한 시간 단계를 지정하는 cond_ids 변수를 만드는 함수
     def make_cond_schedule(self, ):
+        #num_timesteps : Diffusion 모델에서 입력으로 들어가는 이미지의 시간 단계를 결정하는 변수
+        #num_timesteps_cond: Conditional Sampling을 위한 시간 단계를 결정하는 변수
         self.cond_ids = torch.full(size=(self.num_timesteps,), fill_value=self.num_timesteps - 1, dtype=torch.long)
         ids = torch.round(torch.linspace(0, self.num_timesteps - 1, self.num_timesteps_cond)).long()
         self.cond_ids[:self.num_timesteps_cond] = ids
 
     @rank_zero_only
     @torch.no_grad()
+    #Trainer 객체에서 학습 배치가 시작될 때 호출되는 함수
     def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
         # only for very first batch
         if self.scale_by_std and self.current_epoch == 0 and self.global_step == 0 and batch_idx == 0 and not self.restarted_from_ckpt:
@@ -643,18 +653,20 @@ class LatentDiffusion(DDPM):
         if self.shorten_cond_schedule:
             self.make_cond_schedule()
 
+    #first_stage model을 instance화 하는 함수(해당 class에서는 Unet)
     def instantiate_first_stage(self, config):
         model = instantiate_from_config(config)
-        self.first_stage_model = model.eval()
+        self.first_stage_model = model.eval() #first_stage_model로 instance화 하여 계속 사용한다.
         self.first_stage_model.train = disabled_train
         for param in self.first_stage_model.parameters():
             param.requires_grad = False
 
+    #conditional model을 instance화 하는 함수
     def instantiate_cond_stage(self, config):
         if not self.cond_stage_trainable:
             if config == "__is_first_stage__":
                 print("Using first stage also as cond stage.")
-                self.cond_stage_model = self.first_stage_model
+                self.cond_stage_model = self.first_stage_model #cond_stage_model로 instance화 하여 계속 사용한다.
             elif config == "__is_unconditional__":
                 print(f"Training {self.__class__.__name__} as an unconditional model.")
                 self.cond_stage_model = None
@@ -683,6 +695,7 @@ class LatentDiffusion(DDPM):
         denoise_grid = make_grid(denoise_grid, nrow=n_imgs_per_row)
         return denoise_grid
 
+    #입력으로 받은 encoder_posterior를 이용하여 첫 번째 스테이지에서 추출한 인코딩 z를 반환하는 함수
     def get_first_stage_encoding(self, encoder_posterior):
         if isinstance(encoder_posterior, DiagonalGaussianDistribution):
             z = encoder_posterior.sample()
@@ -858,6 +871,7 @@ class LatentDiffusion(DDPM):
         z = 1. / self.scale_factor * z
         return self.first_stage_model.decode(z)
 
+    #위에서 instance화 한 first_stage_model(unet)의 encoder의 값을 return하는 함수
     @torch.no_grad()
     def encode_first_stage(self, x):
         return self.first_stage_model.encode(x)
