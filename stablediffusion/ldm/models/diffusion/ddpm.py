@@ -93,7 +93,10 @@ class DDPM(pl.LightningModule):
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = DiffusionWrapper(unet_config, conditioning_key) #Diffusion모델에서 추가적인 설정
-        #
+        #unet의 구조와 diffusion에 사용할 conditioning_key를 가지고 diffusion model을 만드는 것
+        #DiffusionWrapper를 따라가봤을 때, 'hybrid'라는 조건의 코드를 사용하는데, 이를 보면 
+        #concat(이전 영상과 현재 영상에서의 특징을 concat)<=diffusion과정 중 하나인 것 같다.
+        # 과 cross-attention을 모두 사용한다.
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -137,6 +140,7 @@ class DDPM(pl.LightningModule):
         if self.ucg_training:
             self.ucg_prng = np.random.RandomState()
 
+    #Diffusion 모델에서 사용되는 betas, alphas, alphas_cumprod, posterior_variance 등의 변수들을 초기화하고 계산하는 함수
     def register_schedule(self, given_betas=None, beta_schedule="linear", timesteps=1000,
                           linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
         if exists(given_betas):
@@ -193,6 +197,7 @@ class DDPM(pl.LightningModule):
         self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
         assert not torch.isnan(self.lvlb_weights).all()
 
+    ############## ema_scope라는 context manager를 정의 ############
     @contextmanager
     def ema_scope(self, context=None):
         if self.use_ema:
@@ -208,6 +213,7 @@ class DDPM(pl.LightningModule):
                 if context is not None:
                     print(f"{context}: Restored training weights")
 
+    #주어진 경로에서 PyTorch 모델의 가중치를 로드하여 현재 모델에 적용하는 기능을 수행
     @torch.no_grad()
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
         sd = torch.load(path, map_location="cpu")
@@ -271,6 +277,8 @@ class DDPM(pl.LightningModule):
         if len(unexpected) > 0:
             print(f"\nUnexpected Keys:\n {unexpected}")
 
+    #diffusion 과정에서 특정 시간 단계 t에서의 확산 분포 q(x_t | x_0)의 평균, 분산, 로그 분산을 계산하는 함수
+    #여기서 구한 diffusion 분포 'q'를 이용하여 나중에 denoising을 하는 것이다.
     def q_mean_variance(self, x_start, t):
         """
         Get the distribution q(x_t | x_0).
@@ -283,12 +291,14 @@ class DDPM(pl.LightningModule):
         log_variance = extract_into_tensor(self.log_one_minus_alphas_cumprod, t, x_start.shape)
         return mean, variance, log_variance
 
+    #노이즈와 현재의 x_t 값을 이용하여 초기 입력 x_0 값을 예측
     def predict_start_from_noise(self, x_t, t, noise):
         return (
                 extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
                 extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
         )
 
+    #z와 v 값을 이용하여 초기 입력 x_0 값을 예측
     def predict_start_from_z_and_v(self, x_t, t, v):
         # self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))
         # self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod)))
@@ -1337,10 +1347,17 @@ class DiffusionWrapper(pl.LightningModule):
                 out = self.scripted_diffusion_model(x, t, cc)
             else:
                 out = self.diffusion_model(x, t, context=cc)
-        elif self.conditioning_key == 'hybrid':
-            xc = torch.cat([x] + c_concat, dim=1)
-            cc = torch.cat(c_crossattn, 1)
-            out = self.diffusion_model(xc, t, context=cc)
+        elif self.conditioning_key == 'hybrid': #concat과 crossattention을 모두 이용
+            xc = torch.cat([x] + c_concat, dim=1)#dim=1은 torch.cat 함수가 tensor들을 결합할 때, tensor들을 연결할 dimension을 의미
+            #여기서 dim=1은 첫 번째 tensor x와 c_concat 리스트의 tensor들을 연결할 때, 두 tensor들의 크기가 서로 같은 dimension을 사용
+            #아마 channel쪽으로 concat할 것 같다.(HxW가 같다면)
+            #c_concat은 이전 image와 합쳐지는 feature map(list)
+            cc = torch.cat(c_crossattn, 1) #여기서 1은 dim=1과 같은 의미(channel쪽으로 뚱뚱해진다.)
+            #c_crossattn은 이전 image와 cross attention을 사용해 extract한 feature map의 list
+            #cc는 conditional data이다. 
+            out = self.diffusion_model(xc, t, context=cc)#context는 cc가 conditional data를 담고 있다는 것을 알려준다.
+            #t는 전체 과정 중 현재를 의미하고, xc는 전체 결과 중 현재 결과를 의미하는 것 같다.
+            #따라서 conditional data를 사용하여 t+1의 결과를 도출해내는 것이 이 코드의 역할인 것 같다.
         elif self.conditioning_key == 'hybrid-adm':
             assert c_adm is not None
             xc = torch.cat([x] + c_concat, dim=1)
