@@ -291,14 +291,14 @@ class DDPM(pl.LightningModule):
         log_variance = extract_into_tensor(self.log_one_minus_alphas_cumprod, t, x_start.shape)
         return mean, variance, log_variance
 
-    #노이즈와 현재의 x_t 값을 이용하여 초기 입력 x_0 값을 예측
+    #이 함수는 x_t 와 noise를 이용하여 초기값을 예측
     def predict_start_from_noise(self, x_t, t, noise):
         return (
                 extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
                 extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
         )
 
-    #z와 v 값을 이용하여 초기 입력 x_0 값을 예측
+    #이 함수는 x_t와 v를 이용하여 초기값을 예측
     def predict_start_from_z_and_v(self, x_t, t, v):
         # self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))
         # self.register_buffer('sqrt_one_minus_alphas_cumprod', to_torch(np.sqrt(1. - alphas_cumprod)))
@@ -307,12 +307,14 @@ class DDPM(pl.LightningModule):
                 extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape) * v
         )
 
+    #이 함수는 x_t와 v를 이용하여 noise를 예측
     def predict_eps_from_z_and_v(self, x_t, t, v):
         return (
                 extract_into_tensor(self.sqrt_alphas_cumprod, t, x_t.shape) * v +
                 extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape) * x_t
         )
 
+    #주어진 시작값 x_start와 관찰값 x_t를 기반으로 t번째 시점에서의 사후 분포의 평균, 분산 및 로그 분산을 계산
     def q_posterior(self, x_start, x_t, t):
         posterior_mean = (
                 extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start +
@@ -322,6 +324,7 @@ class DDPM(pl.LightningModule):
         posterior_log_variance_clipped = extract_into_tensor(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
+    #입력 x와 시간 t에 대해 posterior distribution의 평균(mean)과 분산(variance)을 계산하는 함수
     def p_mean_variance(self, x, t, clip_denoised: bool):
         model_out = self.model(x, t)
         if self.parameterization == "eps":
@@ -334,6 +337,7 @@ class DDPM(pl.LightningModule):
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
+    #입력 이미지 x와 해당 이미지의 시간 스텝 t를 사용하여 사후 분포에서 샘플링(denoising)
     @torch.no_grad()
     def p_sample(self, x, t, clip_denoised=True, repeat_noise=False):
         b, *_, device = *x.shape, x.device
@@ -343,6 +347,8 @@ class DDPM(pl.LightningModule):
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
+    # shape 매개변수로 지정된 크기의 랜덤 노이즈 이미지를 생성
+    # p_sample() 함수를 사용하여 각 시간 단계에서 이미지를 역으로 생성
     @torch.no_grad()
     def p_sample_loop(self, shape, return_intermediates=False):
         device = self.betas.device
@@ -358,24 +364,27 @@ class DDPM(pl.LightningModule):
             return img, intermediates
         return img
 
+    # p_sample_loop() 메소드를 호출하여 무작위 이미지를 생성
     @torch.no_grad()
     def sample(self, batch_size=16, return_intermediates=False):
         image_size = self.image_size
         channels = self.channels
         return self.p_sample_loop((batch_size, channels, image_size, image_size),
                                   return_intermediates=return_intermediates)
-
+    #입력으로 받은 x_start(초기 이미지)와 timestep t에 해당하는 q 분포에서 생성한 노이즈를 합성하여 x_t를 생성하는 함수
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         return (extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
                 extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise)
 
+    #t번째 단계에서 latent variable x와 noise n을 기반으로 v를 계산하는 함수, v는 x의 변화량
     def get_v(self, x, noise, t):
         return (
                 extract_into_tensor(self.sqrt_alphas_cumprod, t, x.shape) * noise -
                 extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x.shape) * x
         )
 
+    #모델의 예측값과 실제 값의 차이를 계산하여 loss를 구하는 함수
     def get_loss(self, pred, target, mean=True):
         if self.loss_type == 'l1':
             loss = (target - pred).abs()
@@ -390,7 +399,9 @@ class DDPM(pl.LightningModule):
             raise NotImplementedError("unknown loss type '{loss_type}'")
 
         return loss
-
+#################################################################################################
+##########################Diffusion model training시에 사용하는 Loss Function#####################
+#################################################################################################
     def p_losses(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
@@ -422,25 +433,30 @@ class DDPM(pl.LightningModule):
 
         return loss, loss_dict
 
+    #손실(loss) 및 다른 성능 지표들을 반환(model이 실제로 동작하는 code)
     def forward(self, x, *args, **kwargs):
         # b, c, h, w, device, img_size, = *x.shape, x.device, self.image_size
         # assert h == img_size and w == img_size, f'height and width of image must be {img_size}'
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
-        return self.p_losses(x, t, *args, **kwargs)
+        return self.p_losses(x, t, *args, **kwargs) #결국 Training은 Loss가 적게 나오도록 학습시키는 것
 
+    #데이터 배치(batch)에서 이미지 데이터를 가져와 PyTorch의 Tensor 형식으로 변환하는 함수
     def get_input(self, batch, k):
         x = batch[k]
         if len(x.shape) == 3:
             x = x[..., None]
-        x = rearrange(x, 'b h w c -> b c h w')
+        x = rearrange(x, 'b h w c -> b c h w') #여기서 c h w형태로 바꾸는지는 모르겠다.
         x = x.to(memory_format=torch.contiguous_format).float()
         return x
 
+    # 하나의 mini-batch 데이터에 대해 모델의 forward pass를 수행하고, 손실(loss)과 로스 딕셔너리(loss_dict)를 반환
     def shared_step(self, batch):
         x = self.get_input(batch, self.first_stage_key)
         loss, loss_dict = self(x)
         return loss, loss_dict
 
+    #shared_step 함수를 호출하고, 로스 딕셔너리를 logging하고, 현재 global step을 logging
+    #스케줄러(lr_scheduler)를 사용하는 경우 학습률(lr)을 logging, 반환된 손실(loss)을 반환
     def training_step(self, batch, batch_idx):
         for k in self.ucg_training:
             p = self.ucg_training[k]["p"]
@@ -465,6 +481,8 @@ class DDPM(pl.LightningModule):
 
         return loss
 
+    #shared_step함수를 호출하고, 반환된 로스 딕셔너리를 logging
+    #ema를 사용하여 모델의 가중치를 업데이트하고, 업데이트된 가중치를 사용하여 validation loss를 계산
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         _, loss_dict_no_ema = self.shared_step(batch)
@@ -473,6 +491,7 @@ class DDPM(pl.LightningModule):
             loss_dict_ema = {key + '_ema': loss_dict_ema[key] for key in loss_dict_ema}
         self.log_dict(loss_dict_no_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
         self.log_dict(loss_dict_ema, prog_bar=False, logger=True, on_step=False, on_epoch=True)
+
 
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:
