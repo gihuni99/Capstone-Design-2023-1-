@@ -4,11 +4,11 @@ import torch.nn.functional as F
 
 from .base_model import BaseModel
 from .blocks import (
-    FeatureFusionBlock,
-    FeatureFusionBlock_custom,
-    Interpolate,
-    _make_encoder,
-    forward_vit,
+    FeatureFusionBlock, #이미지의 다양한 resolution에서 추출된 feature map들을 결합하는 블록
+    FeatureFusionBlock_custom, #FeatureFusionBlock의 사용자 지정 버전
+    Interpolate, #Upsampling을 위한 블록
+    _make_encoder,#EfficientNet 또는 Vision Transformer와 같은 인코더를 생성하는 블록(우리코드에서는 ViT)
+    forward_vit,#Vision Transformer 인코더를 정방향으로 진행하는 블록
 )
 
 
@@ -26,12 +26,16 @@ def _make_fusion_block(features, use_bn):
 class DPT(BaseModel):
     def __init__(
         self,
-        head,
-        features=256,
-        backbone="vitb_rn50_384",
-        readout="project",
-        channels_last=False,
-        use_bn=False,
+        head, #입력 이미지를 받아서 segmentation mask를 출력하는 네트워크의 끝단에 해당하는 모듈을 지정하는 파라미터
+##############우리 모델에서는 DPTDepthModel에서 head를 따로 선언하여 depth map을 만드는 것 같다.##################
+        features=256,#입력 이미지의 특징을 추출하는 backbone 네트워크의 출력 채널 수를 지정하는 파라미터
+        backbone="vitb_rn50_384",#사용할 backbone 네트워크의 종류를 지정하는 파라미터
+        #ResNet-50의 구조를 사용하고, 384x384 크기의 입력 이미지를 처리
+        readout="project",#backbone 네트워크의 출력을 처리하는 방법을 지정하는 파라미터
+        #"project"로 설정하면, 각 위치에서의 feature map에 1x1 컨볼루션을 적용하여 출력 채널 수를 줄인다.
+        channels_last=False,#입력 이미지를 channels_last 형태로 저장할지 여부를 지정하는 파라미터
+        #channels_last 형태로 저장하면 메모리 사용량을 줄일 수 있어서 성능 향상에 도움
+        use_bn=False,#BN (Batch Normalization)을 사용할지 여부를 지정하는 파라미터
     ):
 
         super(DPT, self).__init__()
@@ -46,6 +50,8 @@ class DPT(BaseModel):
 
         # Instantiate backbone and reassemble blocks
         self.pretrained, self.scratch = _make_encoder(
+        #pretrained: 지정한 backbone 네트워크를 저장하는 변수
+        #scratch: backbone 네트워크 이후의 네트워크 레이어들을 저장하는 변수
             backbone,
             features,
             False, # Set to true of you want to train from scratch, uses ImageNet weights
@@ -85,9 +91,9 @@ class DPT(BaseModel):
         return out
 
 
-#위 코드는 DPTDepthModel이라는 클래스를 정의하는 코드입니다. DPTDepthModel은 DPT 클래스를 상속받아서 만들짐
+#이 코드는 DPTDepthModel이라는 클래스를 정의하는 코드입니다. DPTDepthModel은 DPT 클래스를 상속받아서 만들짐
 #DPT는 Deep Hierarchical Multi-Scale Patch-based Network for Depth Estimation (DPT) 모델을 구현한 클래스
-#DPT는 위에 정의되어 있고, 주석 설명을 달아 놓았다.
+#DPT는 위에 정의되어 있고, 주석 설명을 달아 놓았습니다.
 class DPTDepthModel(DPT):
     def __init__(self, path=None, non_negative=True, **kwargs):
         features = kwargs["features"] if "features" in kwargs else 256
@@ -116,13 +122,12 @@ class DPTDepthModel(DPT):
 
             #ReLU 함수를 적용하여 양수로 만듭니다. 
             #non_negative=True인 경우에만 ReLU 함수를 사용하며, 그렇지 않은 경우에는 아무 동작도 하지 않는 Identity 레이어를 사용합니다.
-            nn.ReLU(True) if non_negative else nn.Identity(),
-
-            #출력값을 일정하게 유지하기 위한 함수, 입력값을 그대로 출력값으로 가져온다.
-            nn.Identity(),
+            nn.ReLU(True) if non_negative else nn.Identity(),#Identity는 아무것도 동작하지 않는 레이어
+            #위처럼 ReLU가 동작하지 않을 때 입력값을 그대로 출력으로 내기 위해 사용
+            nn.Identity(),# 사실 왜 사용되는지는 잘 모르겠다. 그냥 사용 안하면 그만이라고 생각이 든다.
         )
 
-        super().__init__(head, **kwargs)
+        super().__init__(head, **kwargs) #위에서 정의한 head를 DPT에 넣어준다.
 
         if path is not None:
            self.load(path)
