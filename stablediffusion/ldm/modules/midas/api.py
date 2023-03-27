@@ -13,7 +13,8 @@ from ldm.modules.midas.midas.transforms import Resize, NormalizeImage, PrepareFo
 
 ISL_PATHS = {
     "dpt_large": "midas_models/dpt_large-midas-2f21e586.pt",
-    "dpt_hybrid": "midas_models/dpt_hybrid-midas-501f0c75.pt",
+    "dpt_hybrid": "midas_models/dpt_hybrid-midas-501f0c75.pt", #github에서 설치 가능하다.
+    #(pt 파일은 PyTorch 모델의 가중치(weight)를 저장하는 파일 형식)
     "midas_v21": "",
     "midas_v21_small": "",
 }
