@@ -464,10 +464,16 @@ if __name__ == "__main__":
     # (in particular `main.DataModuleFromConfig`)
     sys.path.append(os.getcwd())
 
-    parser = get_parser()
-    parser = Trainer.add_argparse_args(parser)
-
-    opt, unknown = parser.parse_known_args()
+    parser = get_parser()#Command Line Interface(CLI)를 지원하기 위한 코드
+    #CLI는 사용자와 컴퓨터가 상호작용하기 위한 인터페이스 중 하나
+    #CLI를 사용하면 사용자는 터미널 또는 콘솔 창에서 컴퓨터에게 명령을 전달하고, 컴퓨터는 그에 따른 결과를 출력할 수 있다.
+    parser = Trainer.add_argparse_args(parser)#Trainer 클래스에서 제공하는 add_argparse_args() method
+    #Trainer 클래스에서 사용할 인자들을 parser에 추가
+    #파싱(Parsing)은 주어진 문자열을 의미 있는 단위로 나누는 과정
+    #주로 프로그래밍에서는 입력된 명령어나 코드를 실행 가능한 형태로 변환하기 위해 파싱을 수행
+    #컴퓨터에서 실행하는 프로그램의 명령어를 입력할 때, 명령어의 인자들을 구분하는데 공백 문자(스페이스, 탭 등)을 사용
+    opt, unknown = parser.parse_known_args()# parser의 인자들의 opt와 unknown변수에 parsing
+    #opt는 Trainer클래스에서 사용할 index저장, unkown은 그 외 인식 불가한 index저장(잘못 입력되었거나, 추가 입력된 것) 
     if opt.name and opt.resume:
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
@@ -488,8 +494,8 @@ if __name__ == "__main__":
             logdir = opt.resume.rstrip("/")
             ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
 
-        opt.resume_from_checkpoint = ckpt
-        base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml")))
+        opt.resume_from_checkpoint = ckpt #pre-training된 model의 checkpoint받는다.
+        base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml"))) #여기에서 yaml파일의 조건을 받는다.
         opt.base = base_configs + opt.base
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
@@ -712,15 +718,16 @@ if __name__ == "__main__":
 
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)
-
+        #실제로 코드를 수행하는 단계
         # run
-        if opt.train:
+        if opt.train: #opt.train이 true이면 training
             try:
-                trainer.fit(model, data)
+#Trainer는 Pytorch Lightning라이브러리에서 제공하는 모델 학습 시스템
+                trainer.fit(model, data) #모델 학습을 시작하기 위해 fit()함수를 제공한다.
             except Exception:
                 melk()
                 raise
-        if not opt.no_test and not trainer.interrupted:
+        if not opt.no_test and not trainer.interrupted: #그냥 test만 진행하는 조건문
             trainer.test(model, data)
     except Exception:
         if opt.debug and trainer.global_rank == 0:
