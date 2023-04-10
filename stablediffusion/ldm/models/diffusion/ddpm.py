@@ -1406,7 +1406,7 @@ class DiffusionWrapper(pl.LightningModule):
         else:
             raise NotImplementedError()
 
-        return out
+        return out # model 설정 끝 리턴
 
 
 class LatentUpscaleDiffusion(LatentDiffusion):
@@ -1745,11 +1745,12 @@ class LatentDepth2ImageDiffusion(LatentFinetuneDiffusion):
     """
 
     def __init__(self, depth_stage_config, concat_keys=("midas_in",), *args, **kwargs):
+        # depth_stage_config : yaml 안에 정의됨.
         super().__init__(concat_keys=concat_keys, *args, **kwargs)
         self.depth_model = instantiate_from_config(depth_stage_config)
         self.depth_stage_key = concat_keys[0]
 
-    @torch.no_grad()
+    @torch.no_grad() # 학습 X
     def get_input(self, batch, k, cond_key=None, bs=None, return_first_stage_outputs=False):
         # note: restricted to non-trainable encoders currently
         assert not self.cond_stage_trainable, 'trainable cond stages not yet supported for depth2img'
