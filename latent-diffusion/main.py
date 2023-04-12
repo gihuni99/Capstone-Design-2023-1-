@@ -474,13 +474,16 @@ if __name__ == "__main__":
     #컴퓨터에서 실행하는 프로그램의 명령어를 입력할 때, 명령어의 인자들을 구분하는데 공백 문자(스페이스, 탭 등)을 사용
     opt, unknown = parser.parse_known_args()# parser의 인자들의 opt와 unknown변수에 parsing
     #opt는 Trainer클래스에서 사용할 index저장, unkown은 그 외 인식 불가한 index저장(잘못 입력되었거나, 추가 입력된 것) 
-    if opt.name and opt.resume:
+
+    if opt.name and opt.resume: #모델을 Test할 때, -r과 -n명령어를 동시에 쓸 수 없도록 하기 위한 조건문
+        #즉 opt는 터미널에 입력하는 변수들을 저장하는 변수이다.
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
             "If you want to resume training in a new log folder, "
             "use -n/--name in combination with --resume_from_checkpoint"
         )
-    if opt.resume: #checkpoint를 불러와서 학습할 때의 옵션, 즉 전이학습을 할 때 사용
+    
+    if opt.resume: #checkpoint를 불러와서 학습할 때의 옵션, 즉 전이학습을 할 때 사용(-r 옵션을 주면 사용 가능)
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
@@ -499,26 +502,28 @@ if __name__ == "__main__":
         opt.base = base_configs + opt.base #이전에 사용했던 yaml파일과 새로 사용하는 yaml파일을 합친다.
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
-    else: #전이학습을 하지 않을 때(checkpoint x)
-        if opt.name:
+    else: #전이학습을 하지 않을 때(checkpoint x) (-r 옵션이 없을 때 실행된다.)
+        if opt.name: #training을 할 때, -n옵션이 있어야 한다.
             name = "_" + opt.name
-        elif opt.base:
-            cfg_fname = os.path.split(opt.base[0])[-1]
-            cfg_name = os.path.splitext(cfg_fname)[0]
-            name = "_" + cfg_name
+        elif opt.base: #-base 옵션은 있으므로 우리 모델에 해당한다.(opt.base는 yaml파일의 경로를 의미)
+            #cfg_fname은 yaml파일의 이름을 의미(ex. seg.yaml)
+            cfg_fname = os.path.split(opt.base[0])[-1] #yaml파일의 경로에서 파일 이름만 선택하여 저장
+            cfg_name = os.path.splitext(cfg_fname)[0] #확장자를 제외한 이름 저장(ex.  seg)
+            name = "_" + cfg_name #따라서 name변수는 _seg가 된다.
         else:
             name = ""
-        nowname = now + name + opt.postfix
-        logdir = os.path.join(opt.logdir, nowname)
+        nowname = now + name + opt.postfix # postfix 옵션이 있다면 사용, now는 현재 날짜와 시간정보
+        logdir = os.path.join(opt.logdir, nowname) #로그를 저장할 directory경로 지정
 
-    ckptdir = os.path.join(logdir, "checkpoints")
-    cfgdir = os.path.join(logdir, "configs")
+    ckptdir = os.path.join(logdir, "checkpoints")#checkpoint를 저장할 경로 
+    cfgdir = os.path.join(logdir, "configs") #yaml파일을 저장할 경로
     seed_everything(opt.seed)
 #####여기까지가 PyTorch Lightning에서 학습을 시작하기 위한 코드######
 
 
     try:
         # init and save configs
+        #OmegaConf는 yaml이나 JSON같은 설정파일들을 OmegaConf객체로 변환하여 쉽게 불러올 수 있도록 한다.
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
         cli = OmegaConf.from_dotlist(unknown)
         config = OmegaConf.merge(*configs, cli)
