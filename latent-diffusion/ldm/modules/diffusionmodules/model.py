@@ -81,9 +81,7 @@ class Downsample(nn.Module):
 
 class ResnetBlock(nn.Module):
     def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False,
-                 dropout, temb_channels=512): #init의 input값은 명시되지 않았을 때에만 적용한다.
-        #예를 들어 out_channels=block_out이라는 것으로 사용자가 설정하면 out_channel은 None이 아닌 것이다. conv_shortcut도 마찬가지로 False가 아닐 수 있다.
-        #사용자가 값을 명시하지 않았을 때에만 init에서 정의한 것 처럼 None 또는 False가 된다.
+                 dropout, temb_channels=512):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
@@ -389,30 +387,20 @@ class Encoder(nn.Module):
                                        padding=1)
 
         curr_res = resolution
-        #ch_mult는 ResnetBlock 내에서 layer별로 사용할 channel의 수를 결정하는 인자
-        #in_ch_mult는 ResnetBlock내에서 각 Residual Block의 입력 채널의 개수를 정의하는 인자.
-        in_ch_mult = (1,)+tuple(ch_mult) #ch_mult가 (1,2,4,8)로 입력되었기 때문에 in_ch_mult은 (1,1,2,4,8)이다.
-        ######################################의문점##############################################################
-        #여기서 ch_mult값을 사용자가 입력하지 않았을 때에만 ch_mult가 init에서 정의한 (1,2,4,8)이된다. 따라서 in_ch_mult는 (1,1,2,4,8)이 된다.
-        #ch_mult가 (2,4,8,16)이라면 in_ch_mult가 (1,2,4,8,16)이 됨으로 in_ch_mult의 맨 앞에 1을 추가해주는 것이 이해가 된다.
-        #그러면 ch_mult가 1로 시작하면 굳이 1을 넣지 않아도 되지 않은가?
+        in_ch_mult = (1,)+tuple(ch_mult)
         self.in_ch_mult = in_ch_mult
-        self.down = nn.ModuleList() #down이라는 새로운 module list
+        self.down = nn.ModuleList()
         for i_level in range(self.num_resolutions):
             block = nn.ModuleList()
             attn = nn.ModuleList()
             block_in = ch*in_ch_mult[i_level]
             block_out = ch*ch_mult[i_level]
-            for i_block in range(self.num_res_blocks): #residual block의 수만큼 반복(사용자가 설정하기 나름이다)
+            for i_block in range(self.num_res_blocks):
                 block.append(ResnetBlock(in_channels=block_in,
-                                         out_channels=block_out, #ResnetBlock에 ResnetBlock init()에 out_channels=None으로 정의되어 있어서 의미 없는 값인줄 알았으나,
-                                         #이렇게 out_channels=block_out처럼 선언을 해주면 이 값으로 바뀌는 것을 알게 되었다.
-                                         #따라서 이 ResnetBlock은 input의 channel과 output의 channel이 block_in, block_out으로 서로 다르다.
+                                         out_channels=block_out,
                                          temb_channels=self.temb_ch,
-                                         dropout=dropout)) #인자들의 이름을 명시하면, 순서가 바뀌어도 상관 없다.
-                                        # +) ResnetBlock을 선언할 때, *이 들어가는데, 이거는 인자를 선언하는 개수를 바꿀 수 있다는 뜻이다.
-                                        #즉, out_channels에 대해 선언하지 않아도 된다는 것이다. 하지만 in_channel은 선언되어 있는 것이 없기 때문에 반드시 해주어야 한다.
-                block_in = block_out#첫번째 ResnetBlock을 통과한 이후에는 출력 channel이 계속 유지된다.
+                                         dropout=dropout))
+                block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
             down = nn.Module()

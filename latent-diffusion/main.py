@@ -480,7 +480,7 @@ if __name__ == "__main__":
             "If you want to resume training in a new log folder, "
             "use -n/--name in combination with --resume_from_checkpoint"
         )
-    if opt.resume:
+    if opt.resume: #checkpoint를 불러와서 학습할 때의 옵션, 즉 전이학습을 할 때 사용
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
@@ -495,11 +495,11 @@ if __name__ == "__main__":
             ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
 
         opt.resume_from_checkpoint = ckpt #pre-training된 model의 checkpoint받는다.
-        base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml"))) #여기에서 yaml파일의 조건을 받는다.
-        opt.base = base_configs + opt.base
+        base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml"))) #이전에 사용했던 yaml파일
+        opt.base = base_configs + opt.base #이전에 사용했던 yaml파일과 새로 사용하는 yaml파일을 합친다.
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
-    else:
+    else: #전이학습을 하지 않을 때(checkpoint x)
         if opt.name:
             name = "_" + opt.name
         elif opt.base:
@@ -514,6 +514,8 @@ if __name__ == "__main__":
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
     seed_everything(opt.seed)
+#####여기까지가 PyTorch Lightning에서 학습을 시작하기 위한 코드######
+
 
     try:
         # init and save configs
@@ -662,6 +664,7 @@ if __name__ == "__main__":
 
         trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
+        #trainer가 train또는 test를 위한 조건을 가지고 있다.
         trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
         trainer.logdir = logdir  ###
 
@@ -718,6 +721,7 @@ if __name__ == "__main__":
 
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)
+
         #실제로 코드를 수행하는 단계
         # run
         if opt.train: #opt.train이 true이면 training
