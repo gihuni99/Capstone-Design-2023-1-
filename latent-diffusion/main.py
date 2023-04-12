@@ -122,11 +122,14 @@ def get_parser(**parser_kwargs):
     )
     return parser
 
-
+#opt는 CLI를 통해 입력받은 인덱스들(옵션이라고 생각하면 된다.)
 def nondefault_trainer_args(opt):
     parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser)
+    parser = Trainer.add_argparse_args(parser) #Trainer는 PyTorch Lightning에서 제공하는 학습을 위한 클래스
     args = parser.parse_args([])
+    #sorted: 각 값들을 정렬하여 리스트형태로 반환(문자열, 튜플도 정렬된다.)
+    #getattr는 객체의 속성값을 반환하는데, dictionary의 key값이라고 생각하면된다.
+    #따라서 opt, 즉 CLI로 입력받은 값이 원래의 Trainer에 없는 인덱스 값이면 정렬하여 list화 한다.(기본값이 아닌 값들)
     return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
 
 
@@ -520,29 +523,46 @@ if __name__ == "__main__":
     seed_everything(opt.seed)
 #####여기까지가 PyTorch Lightning에서 학습을 시작하기 위한 코드######
 
+    #모든 기준은 우선 seg.yaml파일로 하여 주석 작성
 
     try:
         # init and save configs
         #OmegaConf는 yaml이나 JSON같은 설정파일들을 OmegaConf객체로 변환하여 쉽게 불러올 수 있도록 한다.
-        configs = [OmegaConf.load(cfg) for cfg in opt.base]
-        cli = OmegaConf.from_dotlist(unknown)
-        config = OmegaConf.merge(*configs, cli)
+        #base에는 yaml파일의 경로가 있고, 우선 Training을 위한 코드를 목적으로 opt.base가 다음과 같다고 가정한다.
+        #configs/latent-diffusion/seg.yaml
+        configs = [OmegaConf.load(cfg) for cfg in opt.base] #config에 yaml파일의 객체들이 모두 저장된다.
+        cli = OmegaConf.from_dotlist(unknown) #인식하지 못한 변수들을 저장(나중에 사용할 수도 있는 값들)
+        config = OmegaConf.merge(*configs, cli) #yaml파일의 모든 객체와 CLI를 통해 입력된 uknown값들을 config에 저장
+        
+        # yaml파일의 lightning객체를 lightning_config에 저장, 객체에는 lightning.trainer 등이 있다.(yaml파일 참고)
         lightning_config = config.pop("lightning", OmegaConf.create())
+        
         # merge trainer cli with config
+        #lightning_config에서 trainer객체를 trainer_config에 저장
+        #trainer.benchmark가 True로 저장되어 있다.
         trainer_config = lightning_config.get("trainer", OmegaConf.create())
+        
         # default to ddp
-        trainer_config["accelerator"] = "ddp"
+        trainer_config["accelerator"] = "ddp" #trainer_config에 accelerator 키에는 ddp가 저장
+        
+        #opt는 CLI(터미널)을 통해 입력받은 인덱스들
+        #nondefault_trainer_args(opt)는 CLI를 통해 입력받은 인덱스 중 PyTorch Lightning에 없는
+        #인덱스 값들의 list이다.(기본값이 아닌 값들)
         for k in nondefault_trainer_args(opt):
-            trainer_config[k] = getattr(opt, k)
-        if not "gpus" in trainer_config:
+            trainer_config[k] = getattr(opt, k)#기본값이 아닌 인덱스들을 trainer_config에 저장한다.
+        if not "gpus" in trainer_config: #gpus라는 옵션이 없을 때 cpu만 사용하는 조건문(seg.yaml은 사용)
             del trainer_config["accelerator"]
             cpu = True
         else:
-            gpuinfo = trainer_config["gpus"]
-            print(f"Running on GPUs {gpuinfo}")
+            gpuinfo = trainer_config["gpus"] #gpuinfo는 gpus정보를 받는다.(우선 github에서는 기본적으로 0이라고 함)
+            print(f"Running on GPUs {gpuinfo}")#gpu번호를 말하는 것 같다.(서버에서 사용할 gpu선택하면 될 것 같다.)
             cpu = False
+            
+        #**는 딕셔너리의 키-값 쌍을 함수의 인자로 전달할 때 사용
+        #trainer_config를 Namespace객체로 변환하여 trainer_opt에 저장
+        #trainer_opt.gpus 등의 형태로 사용가능하다.
         trainer_opt = argparse.Namespace(**trainer_config)
-        lightning_config.trainer = trainer_config
+        lightning_config.trainer = trainer_config#trainer_config의 정보를 lightning_config.trainer객체에 저장
 
         # model
         model = instantiate_from_config(config.model)
