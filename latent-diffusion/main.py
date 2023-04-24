@@ -565,8 +565,12 @@ if __name__ == "__main__":
         lightning_config.trainer = trainer_config#trainer_config의 정보를 lightning_config.trainer객체에 저장
 
         # model
+        #결론적으로 get_obj_from_str(config["target"])(**config.get("params", dict()))의 결과를 model에 return
+        #yaml파일의 target:ldm.models.diffusion.ddpm.LatentDiffusion
+        #yaml파일의 params의 인덱스들을 인스턴스로 전달(key와 value모두)
+        #예를 들어 model.image_size는 64가 된다. model은 LatentDiffusion 클래스이다.
         model = instantiate_from_config(config.model)
-
+ 
         # trainer and callbacks
         trainer_kwargs = dict()
 
