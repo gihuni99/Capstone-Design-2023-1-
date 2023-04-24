@@ -84,7 +84,12 @@ class DDPM(pl.LightningModule):
         self.image_size = image_size  # try conv?
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
-        self.model = DiffusionWrapper(unet_config, conditioning_key)
+        self.model = DiffusionWrapper(unet_config, conditioning_key)#Diffusion모델에서 추가적인 설정
+        ##################stable diffusion의 경우############################
+        #unet의 구조와 diffusion에 사용할 conditioning_key를 가지고 diffusion model을 만드는 것
+        #DiffusionWrapper를 따라가봤을 때, 'hybrid'라는 조건의 코드를 사용하는데, 이를 보면 
+        #concat(이전 영상과 현재 영상에서의 특징을 concat)<=diffusion과정 중 하나인 것 같다.
+        # 과 cross-attention을 모두 사용한다.
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -104,6 +109,7 @@ class DDPM(pl.LightningModule):
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys, only_model=load_only_unet)
 
+        #Diffusion 모델에서 사용되는 betas, alphas, alphas_cumprod, posterior_variance 등의 변수들을 초기화하고 계산하는 함수
         self.register_schedule(given_betas=given_betas, beta_schedule=beta_schedule, timesteps=timesteps,
                                linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s)
 
@@ -169,6 +175,7 @@ class DDPM(pl.LightningModule):
         self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
         assert not torch.isnan(self.lvlb_weights).all()
 
+    ############## ema_scope라는 context manager를 정의 ############
     @contextmanager
     def ema_scope(self, context=None):
         if self.use_ema:
@@ -184,6 +191,8 @@ class DDPM(pl.LightningModule):
                 if context is not None:
                     print(f"{context}: Restored training weights")
 
+    #주어진 경로에서 PyTorch 모델의 가중치를 로드하여 현재 모델에 적용하는 기능을 수행
+    #stable diffusion과 다른 점은 @torch.no_grad()가 없다(학습 가능)
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
         sd = torch.load(path, map_location="cpu")
         if "state_dict" in list(sd.keys()):
@@ -202,6 +211,8 @@ class DDPM(pl.LightningModule):
         if len(unexpected) > 0:
             print(f"Unexpected Keys: {unexpected}")
 
+    #diffusion 과정에서 특정 시간 단계 t에서의 확산 분포 q(x_t | x_0)의 평균, 분산, 로그 분산을 계산하는 함수
+    #여기서 구한 diffusion 분포 'q'를 이용하여 나중에 denoising을 하는 것이다.
     def q_mean_variance(self, x_start, t):
         """
         Get the distribution q(x_t | x_0).
@@ -214,6 +225,7 @@ class DDPM(pl.LightningModule):
         log_variance = extract_into_tensor(self.log_one_minus_alphas_cumprod, t, x_start.shape)
         return mean, variance, log_variance
 
+    #이 함수는 x_t 와 noise를 이용하여 초기값을 예측
     def predict_start_from_noise(self, x_t, t, noise):
         return (
                 extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
@@ -449,9 +461,9 @@ class LatentDiffusion(DDPM):
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", [])
         super().__init__(conditioning_key=conditioning_key, *args, **kwargs)
-        self.concat_mode = concat_mode
-        self.cond_stage_trainable = cond_stage_trainable
-        self.cond_stage_key = cond_stage_key
+        self.concat_mode = concat_mode #seg.yaml에서 true
+        self.cond_stage_trainable = cond_stage_trainable #seg.yaml에서 true
+        self.cond_stage_key = cond_stage_key #직접 설정 가능, 기본 값은 image
         try:
             self.num_downs = len(first_stage_config.params.ddconfig.ch_mult) - 1
         except:
