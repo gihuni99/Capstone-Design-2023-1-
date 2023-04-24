@@ -440,8 +440,10 @@ class LatentDiffusion(DDPM):
         self.scale_by_std = scale_by_std
         assert self.num_timesteps_cond <= kwargs['timesteps']
         # for backwards compatibility after implementation of DiffusionWrapper
-        if conditioning_key is None:
-            conditioning_key = 'concat' if concat_mode else 'crossattn'
+        if conditioning_key is None: #seg.yaml에서는 key가 없다. 따라서 None
+            conditioning_key = 'concat' if concat_mode else 'crossattn'#seg.yaml에서는 concat_mode가 true
+            #따라서 conditioning_key가 'concat' 
+        ################우리도 concat을 사용해야한다. crossattn은 복잡하고 구현 어려움############
         if cond_stage_config == '__is_unconditional__':
             conditioning_key = None
         ckpt_path = kwargs.pop("ckpt_path", None)
@@ -508,7 +510,7 @@ class LatentDiffusion(DDPM):
             param.requires_grad = False
 
     def instantiate_cond_stage(self, config):
-        if not self.cond_stage_trainable:
+        if not self.cond_stage_trainable:#cond_stage가 학습 불가능한 경우
             if config == "__is_first_stage__":
                 print("Using first stage also as cond stage.")
                 self.cond_stage_model = self.first_stage_model
@@ -522,11 +524,11 @@ class LatentDiffusion(DDPM):
                 self.cond_stage_model.train = disabled_train
                 for param in self.cond_stage_model.parameters():
                     param.requires_grad = False
-        else:
+        else: #cond_stage가 학습 가능한 경우
             assert config != '__is_first_stage__'
             assert config != '__is_unconditional__'
             model = instantiate_from_config(config)
-            self.cond_stage_model = model
+            self.cond_stage_model = model #config에서 가져온 conditional model을 cond_stage_model에 저장
 
     def _get_denoise_row_from_list(self, samples, desc='', force_no_decoder_quantization=False):
         denoise_row = []

@@ -623,7 +623,7 @@ if __name__ == "__main__":
             default_modelckpt_cfg["params"]["monitor"] = model.monitor
             default_modelckpt_cfg["params"]["save_top_k"] = 3
 
-        if "modelcheckpoint" in lightning_config:
+        if "modelcheckpoint" in lightning_config:#yaml파일에 chekpoint에 대해 정의 되어있다면 사용
             modelckpt_cfg = lightning_config.modelcheckpoint
         else:
             modelckpt_cfg =  OmegaConf.create()
@@ -634,7 +634,7 @@ if __name__ == "__main__":
 
         # add callback which sets up log directory
         default_callbacks_cfg = {
-            "setup_callback": {
+            "setup_callback": {#학습 시작 전에 필요한 설정을 수행하는 콜백
                 "target": "main.SetupCallback",
                 "params": {
                     "resume": opt.resume,
@@ -646,7 +646,7 @@ if __name__ == "__main__":
                     "lightning_config": lightning_config,
                 }
             },
-            "image_logger": {
+            "image_logger": {#일정 주기로 모델이 생성하는 이미지를 로깅하는 콜백
                 "target": "main.ImageLogger",
                 "params": {
                     "batch_frequency": 750,
@@ -654,18 +654,18 @@ if __name__ == "__main__":
                     "clamp": True
                 }
             },
-            "learning_rate_logger": {
+            "learning_rate_logger": {#학습 시에 학습률을 로깅하는 콜백
                 "target": "main.LearningRateMonitor",
                 "params": {
                     "logging_interval": "step",
                     # "log_momentum": True
                 }
             },
-            "cuda_callback": {
+            "cuda_callback": {#모델을 GPU로 이동하는 콜백
                 "target": "main.CUDACallback"
             },
         }
-        if version.parse(pl.__version__) >= version.parse('1.4.0'):
+        if version.parse(pl.__version__) >= version.parse('1.4.0'):#PyTorch Lightning의 버전이 1.4.0 이상이어야 함
             default_callbacks_cfg.update({'checkpoint_callback': modelckpt_cfg})
 
         if "callbacks" in lightning_config:
