@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 from functools import partial
+
+#추가코드
+#import openai
+
 import clip
 import open_clip
 from einops import rearrange, repeat
@@ -145,7 +149,7 @@ class FrozenCLIPTextEmbedder(nn.Module):
         super().__init__()
         self.model, _ = clip.load(version, jit=False, device="cpu")
         self.device = device
-        self.max_length = max_length
+        self.max_length = max_length 
         self.n_repeat = n_repeat
         self.normalize = normalize
 

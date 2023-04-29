@@ -3,7 +3,7 @@ import numpy as np
 import time
 import torch
 import torchvision
-import pytorch_lightning as pl
+import pytorch_lightning as pl 
 
 from packaging import version
 from omegaconf import OmegaConf
@@ -18,6 +18,8 @@ from pytorch_lightning.utilities.distributed import rank_zero_only
 from pytorch_lightning.utilities import rank_zero_info
 
 from ldm.data.base import Txt2ImgIterableBaseDataset
+#########shanghai.py############
+from ldm.data.shanghai import *
 from ldm.util import instantiate_from_config
 
 
@@ -122,14 +124,11 @@ def get_parser(**parser_kwargs):
     )
     return parser
 
-#opt는 CLI를 통해 입력받은 인덱스들(옵션이라고 생각하면 된다.)
+
 def nondefault_trainer_args(opt):
     parser = argparse.ArgumentParser()
-    parser = Trainer.add_argparse_args(parser) #Trainer는 PyTorch Lightning에서 제공하는 학습을 위한 클래스
+    parser = Trainer.add_argparse_args(parser)
     args = parser.parse_args([])
-    #sorted: 각 값들을 정렬하여 리스트형태로 반환(문자열, 튜플도 정렬된다.)
-    #getattr는 객체의 속성값을 반환하는데, dictionary의 key값이라고 생각하면된다.
-    #따라서 opt, 즉 CLI로 입력받은 값이 원래의 Trainer에 없는 인덱스 값이면 정렬하여 list화 한다.(기본값이 아닌 값들)
     return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
 
 
@@ -152,6 +151,7 @@ def worker_init_fn(_):
     dataset = worker_info.dataset
     worker_id = worker_info.id
 
+    #Txt2Img가 아니라면 else문으로 간다.
     if isinstance(dataset, Txt2ImgIterableBaseDataset):
         split_size = dataset.num_records // worker_info.num_workers
         # reset num_records to the true number to retain reliable length information
@@ -198,9 +198,10 @@ class DataModuleFromConfig(pl.LightningDataModule):
                 self.datasets[k] = WrappedDataset(self.datasets[k])
 
     def _train_dataloader(self):
-        is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
+        #원본코드#is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
+        is_iterable_dataset = isinstance(self.datasets['train'], ShanhaiTrain)
         if is_iterable_dataset or self.use_worker_init_fn:
-            init_fn = worker_init_fn
+            init_fn = worker_init_fn #img2img에 적절한 설정값이 있을 수도 있다.
         else:
             init_fn = None
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
@@ -208,7 +209,8 @@ class DataModuleFromConfig(pl.LightningDataModule):
                           worker_init_fn=init_fn)
 
     def _val_dataloader(self, shuffle=False):
-        if isinstance(self.datasets['validation'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
+        #원본코드#if isinstance(self.datasets['validation'], Txt2ImgIterableBaseDataset) or self.use_worker_init_fn:
+        if isinstance(self.datasets['validation'], ShanhaiValidation) or self.use_worker_init_fn:
             init_fn = worker_init_fn
         else:
             init_fn = None
@@ -218,7 +220,13 @@ class DataModuleFromConfig(pl.LightningDataModule):
                           worker_init_fn=init_fn,
                           shuffle=shuffle)
 
+<<<<<<< HEAD
+####################33test에 대한 dataloader는 우선 수정 생략###############3
+=======
+>>>>>>> f1810bd6749459b9270ec7a008461231ff268e9f
+
     def _test_dataloader(self, shuffle=False):
+        #is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
         is_iterable_dataset = isinstance(self.datasets['train'], Txt2ImgIterableBaseDataset)
         if is_iterable_dataset or self.use_worker_init_fn:
             init_fn = worker_init_fn
@@ -477,7 +485,6 @@ if __name__ == "__main__":
     #컴퓨터에서 실행하는 프로그램의 명령어를 입력할 때, 명령어의 인자들을 구분하는데 공백 문자(스페이스, 탭 등)을 사용
     opt, unknown = parser.parse_known_args()# parser의 인자들의 opt와 unknown변수에 parsing
     #opt는 Trainer클래스에서 사용할 index저장, unkown은 그 외 인식 불가한 index저장(잘못 입력되었거나, 추가 입력된 것) 
-
     if opt.name and opt.resume: #모델을 Test할 때, -r과 -n명령어를 동시에 쓸 수 없도록 하기 위한 조건문
         #즉 opt는 터미널에 입력하는 변수들을 저장하는 변수이다.
         raise ValueError(
@@ -713,11 +720,12 @@ if __name__ == "__main__":
         print("#### Data #####")
         for k in data.datasets:
             print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
+            print(len(data.datasets[k]))#디버깅 코드
 
         # configure learning rate
         bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
         if not cpu:
-            ngpu = len(lightning_config.trainer.gpus.strip(",").split(','))
+            ngpu = len(str(lightning_config.trainer.gpus).strip(",").split(','))
         else:
             ngpu = 1
         if 'accumulate_grad_batches' in lightning_config.trainer:

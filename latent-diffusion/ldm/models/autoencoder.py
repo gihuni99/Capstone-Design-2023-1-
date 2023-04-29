@@ -55,6 +55,7 @@ class VQModel(pl.LightningModule):
             self.model_ema = LitEma(self)
             print(f"Keeping EMAs of {len(list(self.model_ema.buffers()))}.")
 
+        # ckpt_path = "models/first_stage_models/vq-f4/model.ckpt"
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
         self.scheduler_config = scheduler_config

@@ -2,3 +2,6 @@ train.zip
 test.zip
 train/*
 test/*
+latent-diffusion/models/first_stage_models/*
+valid/*
+latent-diffusion/logs/*
