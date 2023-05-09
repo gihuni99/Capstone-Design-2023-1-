@@ -85,6 +85,7 @@ class DDPM(pl.LightningModule):
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = DiffusionWrapper(unet_config, conditioning_key)
+        print("000000000000",self.model,"00000000000")
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -966,7 +967,7 @@ class LatentDiffusion(DDPM):
                 print(adapted_cond.shape)
                 adapted_cond = rearrange(adapted_cond, '(l b) n d -> l b n d', l=z.shape[-1])
                 print(adapted_cond.shape)
-
+                print("??????????????????",adapted_cond,"????????????????????")
                 cond_list = [{'c_crossattn': [e]} for e in adapted_cond]
 
             else:
@@ -1398,7 +1399,9 @@ class DiffusionWrapper(pl.LightningModule):
     def __init__(self, diff_model_config, conditioning_key):
         super().__init__()
         self.diffusion_model = instantiate_from_config(diff_model_config)
+        #print("yyyyyyyyyyyyyyyyyyyyyy",self.diffusion_model,"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
         self.conditioning_key = conditioning_key
+        #print("yyyyyyyyyyyyyyyyyyyyyy",conditioning_key,"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None):
@@ -1408,7 +1411,9 @@ class DiffusionWrapper(pl.LightningModule):
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)
         elif self.conditioning_key == 'crossattn':
+            #print("--------------------",c_crossattn,"------------") #c_crossattn값이 어디로부터 오는지 찾아야 함
             cc = torch.cat(c_crossattn, 1)
+            #print("++++++++++++",cc,"+++++++++++++++") #여기서부터 nan값이 들어간다.
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
             xc = torch.cat([x] + c_concat, dim=1)

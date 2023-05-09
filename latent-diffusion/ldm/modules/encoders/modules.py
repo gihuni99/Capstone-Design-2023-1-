@@ -4,18 +4,19 @@ from functools import partial
 
 #추가코드
 #import openai
-
+from torch.cuda.amp import autocast
 import clip
 import open_clip
 from einops import rearrange, repeat
 import kornia
 from torch.utils.checkpoint import checkpoint
 
-from ldm.modules.x_transformer import Encoder, TransformerWrapper  # TODO: can we directly rely on lucidrains code and simply add this as a reuirement? --> test
-
+#from ldm.modules.x_transformer import Encoder, TransformerWrapper  # TODO: can we directly rely on lucidrains code and simply add this as a reuirement? --> test
+from xformers import *
 
 class AbstractEncoder(nn.Module):
     def __init__(self):
+        print('abstract')
         super().__init__()
 
     def encode(self, *args, **kwargs):
@@ -135,6 +136,7 @@ class SpatialRescaler(nn.Module):
 
         if self.remap_output:
             x = self.channel_mapper(x)
+        #print("qqqqqqqqqqqqqq",x,"qqqqqqqqqq",x.size(),"qqqqqqqq")
         return x
 
     def encode(self, x):
@@ -173,20 +175,23 @@ class FrozenCLIPTextEmbedder(nn.Module):
         return z
 
 
-class FrozenClipImageEmbedder(nn.Module):
+#class FrozenClipImageEmbedder(nn.Module):
+class FrozenClipImageEmbedder(AbstractEncoder):
     """
         Uses the CLIP image encoder.
         """
     def __init__(
             self,
-            model,
+            model='ViT-L/14',
             jit=False,
+            # device='cpu',
             device='cuda' if torch.cuda.is_available() else 'cpu',
             antialias=False,
         ):
         super().__init__()
+        #print("aaaaaaaaaaaaaaaaaaa",model)
         self.model, _ = clip.load(name=model, device=device, jit=jit)
-
+        del self.model.transformer
         self.antialias = antialias
 
         self.register_buffer('mean', torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
@@ -197,17 +202,94 @@ class FrozenClipImageEmbedder(nn.Module):
         x = kornia.geometry.resize(x, (224, 224),
                                    interpolation='bicubic',align_corners=True,
                                    antialias=self.antialias)
-        x = (x + 1.) / 2.
+        x = (x + 1.) / 2. 
         # renormalize according to clip
         x = kornia.enhance.normalize(x, self.mean, self.std)
+        #print("^^^^^&&&&&&&&&&&&&&&&&",x,"&&&&&&&&&&&&&&&^^^^^",x.size(),"^^")
         return x
 
     def forward(self, x):
+        if isinstance(x, list):
+            device = self.model.visual.conv1.weight.device
+            return torch.zeros(1, 768, device=device)
         # x is assumed to be in range [-1,1]
-        return self.model.encode_image(self.preprocess(x))
+        #print("ddddd", x)
+        x=self.model.encode_image(self.preprocess(x)).float() #원래 있던 코드
+        #x=self.preprocess(x).float()
+
+        #print("aaaaaaaaaaaaaa",x,"aaaaaaaaaaaaaaaaa++++++++++",x.size(),"++++++++++")
+        #filter_data = nn.Parameter(torch.randn(3, 3, 33, 33)).cuda()
+
+        #x = nn.functional.conv2d(x, filter_data, stride=3, padding=0)
+        #print("bbbbbbbbbbbbbbbbbbbbbb",x,"bbbbbbbbbbbbbbbbbb-++++++++++",x.size(),"++++++++++")
+        #x=self.model.encode_image(x)
+        #print("cccccccccccccccccc",x,"ccccccccccccccccc-++++++++++",x.size(),"++++++++++")
+        return x #float 타입 필요
+
+        # return self.model.encode_image(self.preprocess(x))
+    def encode(self, im):
+        return self(im).unsqueeze(1)
+
+class FrozenOpenCLIPImageEmbedder(AbstractEncoder):
+    """
+    Uses the OpenCLIP vision transformer encoder for images
+    """
+
+    def __init__(self, arch="ViT-H-14", version="laion2b_s32b_b79k", device="cuda", max_length=77,
+                 freeze=True, layer="pooled", antialias=True, ucg_rate=0.):
+        super().__init__()
+        model, _, _ = open_clip.create_model_and_transforms(arch, device=torch.device('cpu'),
+                                                            pretrained=version, )
+        del model.transformer
+        self.model = model
+
+        self.device = device
+        self.max_length = max_length
+        if freeze:
+            self.freeze()
+        self.layer = layer
+        if self.layer == "penultimate":
+            raise NotImplementedError()
+            self.layer_idx = 1
+
+        self.antialias = antialias
+
+        self.register_buffer('mean', torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
+        self.register_buffer('std', torch.Tensor([0.26862954, 0.26130258, 0.27577711]), persistent=False)
+        self.ucg_rate = ucg_rate
+
+    def preprocess(self, x):
+        # normalize to [0,1]
+        x = kornia.geometry.resize(x, (224, 224),
+                                   interpolation='bicubic', align_corners=True,
+                                   antialias=self.antialias)
+        x = (x + 1.) / 2.
+        # renormalize according to clip
+        x = kornia.enhance.normalize(x, self.mean, self.std).float()
+        return x
+
+    def freeze(self):
+        self.model = self.model.eval()
+        for param in self.parameters():
+            param.requires_grad = False
+
+    @autocast
+    def forward(self, image, no_dropout=False):
+        z = self.encode_with_vision_transformer(image)
+        if self.ucg_rate > 0. and not no_dropout:
+            z = torch.bernoulli((1. - self.ucg_rate) * torch.ones(z.shape[0], device=z.device))[:, None] * z
+        return z
+
+    def encode_with_vision_transformer(self, img):
+        img = self.preprocess(img)
+        x = self.model.visual(img)
+        return x
+
+    def encode(self, text):
+        return self(text)
 
 
-class FrozenOpenCLIPEmbedder(AbstractEncoder):
+class sdffsdfsdfsdsfd(AbstractEncoder):
     """
     Uses the OpenCLIP transformer encoder for text
     """

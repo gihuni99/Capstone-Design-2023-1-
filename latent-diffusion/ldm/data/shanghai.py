@@ -65,8 +65,8 @@ class ShanghaiBase(Dataset):
         # example = dict((k, self.labels[k][i]) for k in self.labels)
         # image = Image.open(example["file_path_"])
         for idx, image in enumerate([density, cond]):
-            # if not image.mode == "RGB": 
-                # image = image.convert("L") 이제 필요 없어서 주석처리
+            if not image.mode == "RGB": 
+                image = image.convert("RGB")
 
             # default to score-sde preprocessing
             img = np.array(image).astype(np.uint8)

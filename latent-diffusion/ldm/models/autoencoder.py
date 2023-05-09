@@ -10,7 +10,6 @@ from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 
 from ldm.util import instantiate_from_config
 
-
 class VQModel(pl.LightningModule):
     def __init__(self,
                  ddconfig,

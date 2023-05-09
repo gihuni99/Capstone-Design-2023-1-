@@ -76,6 +76,7 @@ def count_params(model, verbose=False):
 
 
 def instantiate_from_config(config):
+    print("hhhhhhhhhhhhhh") #디버깅용
     if not "target" in config:
         if config == '__is_first_stage__':
             return None
