@@ -567,9 +567,9 @@ if __name__ == "__main__":
         #yaml파일의 target:ldm.models.diffusion.ddpm.LatentDiffusion
         #yaml파일의 params의 인덱스들을 인스턴스로 전달(key와 value모두)
         #예를 들어 model.image_size는 64가 된다. model은 LatentDiffusion 클래스이다.
-        print("ggggggggg") #디버깅용
+        # print("ggggggggg") #디버깅용
         model = instantiate_from_config(config.model)
-        print("ggggggggg") #디버깅용
+        # print("ggggggggg") #디버깅용
         # trainer and callbacks
         trainer_kwargs = dict() #학습에 필요한 여러가지 index를 저장하기 위한 빈 dictionary 생성
 
@@ -709,11 +709,11 @@ if __name__ == "__main__":
         # lightning still takes care of proper multiprocessing though
         data.prepare_data()
         data.setup()
-        print("#### Data #####")
+        # print("#### Data #####")
         for k in data.datasets:
             print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
-            print(len(data.datasets[k]))#디버깅 코드
-            print("ffffff",data.datasets,"ffffff") #디버깅코드#############################3
+            print(len(data.datasets[k]))#디버깅 코드0829
+            # print("ffffff",data.datasets,"ffffff") #디버깅코드#############################30829
         # configure learning rate
         bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
         if not cpu:
@@ -763,6 +763,7 @@ if __name__ == "__main__":
             
             try:
 #Trainer는 Pytorch Lightning라이브러리에서 제공하는 모델 학습 시스템
+                #with torch.autocast("cuda"):
                 trainer.fit(model, data) #모델 학습을 시작하기 위해 fit()함수를 제공한다.
             except Exception:
                 melk()

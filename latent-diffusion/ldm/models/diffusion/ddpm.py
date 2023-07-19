@@ -17,6 +17,7 @@ from functools import partial
 from tqdm import tqdm
 from torchvision.utils import make_grid
 from pytorch_lightning.utilities.distributed import rank_zero_only
+from torch.nn import functional as F
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
 from ldm.modules.ema import LitEma
@@ -24,8 +25,8 @@ from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianD
 from ldm.models.autoencoder import VQModelInterface, IdentityFirstStage, AutoencoderKL
 from ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from ldm.models.diffusion.ddim import DDIMSampler
-
-
+from torchvision import models, transforms
+from torchvision.utils import save_image
 __conditioning_keys__ = {'concat': 'c_concat',
                          'crossattn': 'c_crossattn',
                          'adm': 'y'}
@@ -85,7 +86,7 @@ class DDPM(pl.LightningModule):
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
         self.model = DiffusionWrapper(unet_config, conditioning_key)
-        print("000000000000",self.model,"00000000000")
+        #print("000000000000",self.model,"00000000000")
         count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
@@ -284,15 +285,17 @@ class DDPM(pl.LightningModule):
             if mean:
                 loss = loss.mean()
         elif self.loss_type == 'l2':
+            #print("11111111111111111",target.shape,target.max(),target.min(),target.sum(),"111111111111111")
+            #print("222222222222222222",pred.shape,pred.max(),pred.min(),pred.sum(),"22222222222222222")
             if mean:
                 loss = torch.nn.functional.mse_loss(target, pred)
             else:
                 loss = torch.nn.functional.mse_loss(target, pred, reduction='none')
         else:
             raise NotImplementedError("unknown loss type '{loss_type}'")
-
         return loss
-
+    
+        
     def p_losses(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
@@ -307,7 +310,6 @@ class DDPM(pl.LightningModule):
             raise NotImplementedError(f"Paramterization {self.parameterization} not yet supported")
 
         loss = self.get_loss(model_out, target, mean=False).mean(dim=[1, 2, 3])
-
         log_prefix = 'train' if self.training else 'val'
 
         loss_dict.update({f'{log_prefix}/loss_simple': loss.mean()})
@@ -484,6 +486,7 @@ class LatentDiffusion(DDPM):
             # set rescale weight to 1./std of encodings
             print("### USING STD-RESCALING ###")
             x = super().get_input(batch, self.first_stage_key)
+            # self.x_first = x
             x = x.to(self.device)
             encoder_posterior = self.encode_first_stage(x)
             z = self.get_first_stage_encoding(encoder_posterior).detach()
@@ -557,7 +560,9 @@ class LatentDiffusion(DDPM):
                 if isinstance(c, DiagonalGaussianDistribution):
                     c = c.mode()
             else:
+                print("AAAAAAAAAAAAAAA",c,"AAAAAAAA",self.cond_stage_model,"BBBBBBBB")
                 c = self.cond_stage_model(c)
+                print("VVVVVVVVV",c,"VVVVVVVVvv")
         else:
             assert hasattr(self.cond_stage_model, self.cond_stage_forward)
             c = getattr(self.cond_stage_model, self.cond_stage_forward)(c)
@@ -711,8 +716,9 @@ class LatentDiffusion(DDPM):
                 z = torch.argmax(z.exp(), dim=1).long()
             z = self.first_stage_model.quantize.get_codebook_entry(z, shape=None)
             z = rearrange(z, 'b h w c -> b c h w').contiguous()
-
+        #print("uuuuuuuuuuuuuuuuuuu",z,"uuuuuuuuuuuuuuuuuuu",z.size())
         z = 1. / self.scale_factor * z
+        #print("vvvvvvvvvvvvvvvvvvv",z,"vvvvvvvvvvvvvvvvvvvv",z.size())
 
         if hasattr(self, "split_input_params"):
             if self.split_input_params["patch_distributed_vq"]:
@@ -873,11 +879,16 @@ class LatentDiffusion(DDPM):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         if self.model.conditioning_key is not None:
             assert c is not None
-            if self.cond_stage_trainable:
+            if self.cond_stage_trainable: #shanghai.yaml파일은 여기로 온다.
+                #print("AAAAAAAAAAAA",c,"AAAAAAAAAAA",c.size())
                 c = self.get_learned_conditioning(c)
+                #print("KKKKKKKKKKKK",self.get_learned_conditioning,"KKKKKKKKKKK")
+                #print("BBBBBBBBBBB",c,"BBBBBBBBBBBBBB",c.size())
             if self.shorten_cond_schedule:  # TODO: drop this option
                 tc = self.cond_ids[t].to(self.device)
+                
                 c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
+            #print("CCCCCCCCCC",c,"CCCCCCCCCCCCC",c.size())
         return self.p_losses(x, c, t, *args, **kwargs)
 
     def _rescale_annotations(self, bboxes, crop_coordinates):  # TODO: move to dataset
@@ -967,7 +978,7 @@ class LatentDiffusion(DDPM):
                 print(adapted_cond.shape)
                 adapted_cond = rearrange(adapted_cond, '(l b) n d -> l b n d', l=z.shape[-1])
                 print(adapted_cond.shape)
-                print("??????????????????",adapted_cond,"????????????????????")
+                # print("??????????????????",adapted_cond,"????????????????????")
                 cond_list = [{'c_crossattn': [e]} for e in adapted_cond]
 
             else:
@@ -1088,6 +1099,7 @@ class LatentDiffusion(DDPM):
                                        quantize_denoised=quantize_denoised,
                                        return_x0=return_x0,
                                        score_corrector=score_corrector, corrector_kwargs=corrector_kwargs)
+
         if return_codebook_ids:
             raise DeprecationWarning("Support dropped.")
             model_mean, _, model_log_variance, logits = outputs
@@ -1154,6 +1166,7 @@ class LatentDiffusion(DDPM):
                                             quantize_denoised=quantize_denoised, return_x0=True,
                                             temperature=temperature[i], noise_dropout=noise_dropout,
                                             score_corrector=score_corrector, corrector_kwargs=corrector_kwargs)
+
             if mask is not None:
                 assert x0 is not None
                 img_orig = self.q_sample(x0, ts)
@@ -1391,7 +1404,12 @@ class LatentDiffusion(DDPM):
         if not hasattr(self, "colorize"):
             self.colorize = torch.randn(3, x.shape[1], 1, 1).to(x)
         x = nn.functional.conv2d(x, weight=self.colorize)
-        x = 2. * (x - x.min()) / (x.max() - x.min()) - 1.
+        if (x.max()-x.min())==0:
+            x = x
+        else:
+            x = 2. * (x - x.min()) / (x.max() - x.min()) - 1.
+        
+        #print("000000000000",torch.sum(x),"00000000000")
         return x
 
 
@@ -1405,6 +1423,7 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None):
+        #print(">>>>>>>>>>>>>>>>>>",c_crossattn,"<<<<<<<<<<<<<<<<<<")
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
@@ -1412,8 +1431,9 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t)
         elif self.conditioning_key == 'crossattn':
             #print("--------------------",c_crossattn,"------------") #c_crossattn값이 어디로부터 오는지 찾아야 함
+            #with torch.autocast("cuda"):
             cc = torch.cat(c_crossattn, 1)
-            #print("++++++++++++",cc,"+++++++++++++++") #여기서부터 nan값이 들어간다.
+                #print("++++++++++++",cc,"+++++++++++++++",cc.size()) #여기서부터 nan값이 들어간다.
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
             xc = torch.cat([x] + c_concat, dim=1)

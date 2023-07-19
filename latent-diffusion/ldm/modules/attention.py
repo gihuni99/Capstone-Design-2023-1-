@@ -124,6 +124,7 @@ class SpatialSelfAttention(nn.Module):
                                         padding=0)
 
     def forward(self, x):
+        
         h_ = x
         h_ = self.norm(h_)
         q = self.q(h_)
@@ -168,15 +169,15 @@ class CrossAttention(nn.Module):
         )
 
     def forward(self, x, context=None, mask=None):
+        # with torch.autocast("cuda"):
         h = self.heads
-
+        #print("dddddddddddddddddddddddddddddddddddd")
         q = self.to_q(x)
-        #print("555555555555",context,"55555555555555") #context=None이 되는 경우에 nan값이 들어간다.
+        # print("555555555555",context,"55555555555555") #context=None이 되는 경우에 nan값이 들어간다.
         context = default(context, x) # context에 nan값이 들어간다.
-        #print("66666666666",context,"66666666667777777777",x,"7777777777777")
-        k = self.to_k(context)
+        # print("66666666666",context,"66666666667777777777",x,"7777777777777")
         v = self.to_v(context)
-
+        k = self.to_k(context)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         #print("0000",q,"1111",k,v,"22222")#디버깅 코드
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
@@ -208,11 +209,13 @@ class BasicTransformerBlock(nn.Module):
         self.checkpoint = checkpoint
 
     def forward(self, x, context=None):
+        #print("dddddddddddddddddddddddddddddddddddd")
         return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
 
     def _forward(self, x, context=None):
         x = self.attn1(self.norm1(x)) + x
         x = self.attn2(self.norm2(x), context=context) + x
+        #print("dddddddddddddddddddddddddddddddddddd",context,"dddddddddddddddddddddd")
         x = self.ff(self.norm3(x)) + x
         return x
 
@@ -258,6 +261,7 @@ class SpatialTransformer(nn.Module):
         x = rearrange(x, 'b c h w -> b (h w) c')
         for block in self.transformer_blocks:
             x = block(x, context=context)
+            #print("dddddddddddddddddddddddddddddddddddd",context,"dddddddddddddddddddddd",context.size())
         x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
         x = self.proj_out(x)
         return x + x_in

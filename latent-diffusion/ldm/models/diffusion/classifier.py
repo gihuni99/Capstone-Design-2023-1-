@@ -60,7 +60,6 @@ class NoisyLatentImageClassifier(pl.LightningModule):
 
         if self.label_key not in __models__:
             raise NotImplementedError()
-
         self.load_classifier(ckpt_path, pool)
 
         self.scheduler_config = scheduler_config

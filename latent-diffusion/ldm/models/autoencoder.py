@@ -38,7 +38,7 @@ class VQModel(pl.LightningModule):
         self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25,
                                         remap=remap,
                                         sane_index_shape=sane_index_shape)
-        self.quant_conv = torch.nn.Conv2d(ddconfig["z_channels"], embed_dim, 1)
+        self.quant_conv = torch.nn.Conv2d(ddconfig["z_channels"], embed_dim, 1)  #0829   yaml파일에서 z_channel=3, embed_dim=8192이다. Conv2d(입력채널수, 출력채널수,커널크기)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
@@ -266,9 +266,15 @@ class VQModelInterface(VQModel):
         super().__init__(embed_dim=embed_dim, *args, **kwargs)
         self.embed_dim = embed_dim
 
-    def encode(self, x):
-        h = self.encoder(x)
-        h = self.quant_conv(h)
+    def encode(self, x):#0829
+        h = self.encoder(x)#여기가 256x256 -> 64x64로 가는 곳, 즉 Latent diffusion으로 넘어가는 곳
+        #print("ggggggggggggggggggggggg",x.shape,"gggggggggggggggggggg",x.sum())
+        #print("ffffffffffffffffffffffff",h.shape,"ffffffffffffffffffff",h.sum())
+        #f=self.decoder(h)
+        #print("kkkkkkkkkkkkkkkk",f.shape,"kkkkkkkkkkkkkkk",f.sum())
+        #self.quant_conv = torch.nn.Conv2d(3, 8192, 1)
+        h = self.quant_conv(h) #0829 h가 x_start이다!!!!!!!!!
+        #print("pppppppppppppppppppppp",h.shape,h.sum(),"pppppppppppppppppppppp") #0829
         return h
 
     def decode(self, h, force_not_quantize=False):
