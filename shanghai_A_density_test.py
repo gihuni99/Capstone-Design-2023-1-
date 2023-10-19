@@ -32,8 +32,8 @@ import time
 from joblib import Parallel, delayed
 import math
 
-__DATASET_ROOT = "./"
-__OUTPUT_NAME = "ShanghaiTech_PartA_Test/"
+__DATASET_ROOT = "../input/shanghaitech_h5_empty/ShanghaiTech/"
+__OUTPUT_NAME = "ShanghaiTech_PartA_Test/" #"ShanghaiTech_PartB_Test/"
 
 
 def gaussian_filter_density(gt):

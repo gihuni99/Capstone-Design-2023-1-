@@ -30,7 +30,7 @@ from sklearn.externals.joblib import Parallel, delayed
 import sys
 
 __DATASET_ROOT = "../input/shanghaitech_h5_empty/ShanghaiTech/"
-__OUTPUT_NAME = "ShanghaiTech_PartA_Train/"
+__OUTPUT_NAME = "ShanghaiTech_PartA_Train/" #"ShanghaiTech_PartB_Train/"
 
 
 def gaussian_filter_density(gt):
